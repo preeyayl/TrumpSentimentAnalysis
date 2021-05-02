@@ -1,0 +1,385 @@
+---
+title: "PROJECT 350"
+output: html_document
+---
+
+```{r}
+
+
+#install.packages('ISLR')
+library(ISLR)
+#install.packages('dplyr')
+library(dplyr)
+#install.packages('tree')
+library(tree)
+#install.packages('caTools')
+#install.packages('car')
+library(car)
+#install.packages('MPV')
+library(MPV)
+#install.packages('e1071')
+library(e1071)
+
+
+# STAT 350 Final Project
+# Sentiment Analysis of Trump Tweets
+
+library(MASS)
+library(car)
+
+# Words to include as indicator variables for realDonaldTrump tweets
+interest_words = c( "great",
+                    "kentucky",
+                    "people",
+                    "(democrats|dems)",
+                    "mexico",
+                    "fake",
+                    "biden",
+                    "trump",
+                  # "jill",
+                  # "russia",
+                  # "new york times",
+                  # "media",
+                    "fake news",
+                    "president",
+                  # "hillary",
+                    "war",
+                    "mississippi",
+                    "governor",
+                    "republican",
+                    "party",
+                    "maga",
+                    "impeachment",
+                    "thank",
+                    "just",
+                    "american"
+                  # "market stock"
+                   )
+{
+  # Text files for sentiment analysis
+  neg = scan("negative-words.txt",
+             what = "character",
+             comment.char = ";")
+  pos = scan("positive-words.txt",
+             what = "character",
+             comment.char = ";")
+}
+
+{
+  # Counts the number of pos/neg words and outputs
+  # column with pos-neg count
+
+  getSentimentScore = function(tweet_text, pos, neg) {
+    # text preprocessing remove retweet entities
+    sentence = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", tweet_text)
+    # remove all '@people'
+    sentence = gsub("@\\w+", "", sentence)
+    # remove all the punctuation
+    sentence = gsub("[[:punct:]]", "", sentence)
+    # remove all the control chracters, like \n or \r
+    sentence = gsub("[[:cntrl:]]", "", sentence)
+    # remove numbers
+    sentence = gsub("[[:digit:]]", "", sentence)
+    # remove html links
+    sentence = gsub("http\\w+", "", sentence)
+    # remove extra white spaces
+    sentence = gsub("^\\s+|\\s+$", "", sentence)
+    # convert to lower case
+    sentence = iconv(sentence, "UTF-8", "ASCII", sub = "")
+    sentence = tolower(sentence)
+    # split into words
+    word.list = strsplit(sentence, " ")
+    # initialize vector to store score
+    score = numeric(length(word.list)) # loop through each tweet
+    positive = numeric(length(word.list))
+    negative = numeric(length(word.list))
+    for (i in 1:length(word.list)) {
+      # compare our words to the dictionaries of positive # & negative terms
+      pos.matches = match(word.list[[i]], pos)
+      neg.matches = match(word.list[[i]], neg)
+      # match() returns the position of the matched term # or NA we just want a TRUE/FALSE:
+      pos.matches = !is.na(pos.matches)
+      neg.matches = !is.na(neg.matches)
+      # and conveniently enough, TRUE/FALSE will be # treated as 1/0 by sum():
+      score[i] = sum(pos.matches) - sum(neg.matches)
+      positive[i] = sum(pos.matches)
+      negative[i] = sum(neg.matches)
+    }
+
+    # We only want the sentiment score output for this analysis
+    return(data.frame( #positive_word_count = positive,
+                       #negative_word_count = negative,
+                      sentiment_score = score))
+  }
+}
+
+{
+  # Outputs dataframe with the indicator variables for each word
+  # of interest.
+  # text should be a vector of strings, it is cleaned then counted
+  # word_vector is a vector of strings to be passed to grepl
+
+  interestWords = function(text, word_vector){
+    {
+      # Cleaning
+      sentence = gsub("(RT|via)((?:\\b\\W*@\\w+)+)", "", text)
+      sentence = gsub("@\\w+", "", sentence)
+      sentence = gsub("[[:punct:]]", "", sentence)
+      sentence = gsub("[[:cntrl:]]", "", sentence)
+      sentence = gsub("[[:digit:]]", "", sentence)
+      sentence = gsub("http\\w+", "", sentence)
+      sentence = gsub("^\\s+|\\s+$", "", sentence)
+      sentence = iconv(sentence, "UTF-8", "ASCII", sub = "")
+      sentence = tolower(sentence)
+
+      qual_tweets = data.frame()
+
+      # Loop through each sentence (for each sentence, check if any of
+      # the words in the word_vector are present)
+      for(i in 1:length(sentence)){
+
+        # Loop through the word_vector and see if they are in the ith sentence
+        for(j in 1:length(word_vector)){
+          qual_tweets[i, j] = grepl(word_vector[j], sentence[i])
+          if(qual_tweets[i, j] == TRUE){
+            qual_tweets[i, j] = 1
+          }
+          else{
+            qual_tweets[i, j] = 0
+          }
+        }
+      }
+    }
+    for(i in 1:length(names(qual_tweets))){
+      names(qual_tweets)[i] = word_vector[i]
+    }
+    return(qual_tweets)
+  }
+}
+
+
+
+{
+  finalOutput = function(tweets_df, word_vector, pos, neg){
+
+    # A little reordering of variables
+
+    part1 = data.frame(retweetCount = tweets_df$retweetCount,
+                       favoriteCount = tweets_df$favoriteCount,
+                       created = as.POSIXct(tweets_df$created),
+                       weekdays = weekdays(as.POSIXct(tweets_df$created)))
+
+    part2 = data.frame(text = tweets_df$text)
+
+    # Pos/Neg Word Counts
+    sentiments = getSentimentScore(part2$text, pos, neg)
+
+    # Other Word Counts
+    word_indicators = interestWords(part2$text, word_vector)
+
+    # The text is not included in this output (but could be)
+    combined_output = cbind(part1,
+                            sentiments,
+                            word_indicators)
+
+    return(combined_output)
+  }
+}
+
+# Read in the data
+with_rts = read.csv('with_rts.csv')
+wout_rts = read.csv('without_rts.csv')
+
+
+# Run the intial output function to create the indicator
+# variables, weekdays and other functions
+output_with_rts = finalOutput(tweets_df = with_rts,
+                              word_vector = interest_words,
+                              pos = pos,
+                              neg = neg)
+
+output_wout_rts = finalOutput(tweets_df = wout_rts,
+                              word_vector = interest_words,
+                              pos = pos,
+                              neg = neg)
+
+# Create the final data that we want to use for making the model
+# Figure out how to use the weekdays variable and maybe time of day to include and
+# see if it is important ...
+out_with = cbind(rts  = output_with_rts$retweetCount,
+                 # fav = output_with_rts$favoriteCount,
+                 weekdays = output_with_rts$weekdays,
+                 sent = output_with_rts$sentiment_score,
+                 output_with_rts[,6:dim(output_with_rts)[2]])
+
+out_wout = cbind(rts  = output_wout_rts$retweetCount,
+                 # fav = output_wout_rts$favoriteCount,
+                 weekdays = output_wout_rts$weekdays,
+                 sent = output_wout_rts$sentiment_score,
+                 output_wout_rts[,6:(dim(output_wout_rts)[2])])
+##LINEAR MODEL
+
+##VARIABLE SELECTION##
+mfit_null  = lm(rts~1, data=out_wout)
+mfit_full  = lm(rts~ ., data=out_wout)
+
+summary(mfit_full)
+AIC(mfit_full)
+
+# Forward Selection
+step(mfit_null, data=out_wout , scope=list(lower=mfit_null, upper=mfit_full), direction="forward")
+
+# Backward Selection
+step(mfit_full, data=out_wout , direction="backward")
+
+# Stepwise Selection
+step(mfit_null, data=out_wout , scope=list(upper=mfit_full), direction="both")
+
+mfit_final = lm(rts ~ mexico + kentucky + fake + party, data = out_wout)
+summary(mfit_final)
+
+#LINEAR RESIDUALS
+#Before stepwise (Full model)
+full_yhat = mfit_full$fitted.values
+full_OLS_Residuals = mfit_full$residuals
+
+plot(full_yhat, full_OLS_Residuals, ylab='OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+abline(h=0)
+
+#Slight double bow skewed towards the left. Non-constant variance 
+
+#After Stepwise (Best Model)
+final_yhat = mfit_final$fitted.values
+final_OLS_Residuals = mfit_final$residuals
+
+plot(final_yhat, final_OLS_Residuals, ylab='OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+abline(h=0)
+
+#Normality plot
+# Standardized Resiudals
+final_smry <- summary(mfit_final)
+final_MSE_hat = (final_smry$sigma)^2
+final_Standardized_Residuals = final_OLS_Residuals/sqrt(final_MSE_hat)
+
+# Studentized Residuals
+final_Studentized_Residuals = rstandard(mfit_final)
+
+# R-Student Residuals
+final_rStu_Res = rstudent(mfit_final)
+
+round(cbind(final_OLS_Residuals,final_Standardized_Residuals,final_Studentized_Residuals,final_rStu_Res),4)
+e1071::probplot(final_OLS_Residuals, xlab='OLS Residuals', ylab='Percent')
+
+#We need a transformation. Negatively skewed normality plot
+#Since our response is a count, use y^1/2 as a transformation
+
+output_norts1 <- out_wout
+output_norts1$sqrt_retweetCount= sqrt(out_wout$rts)
+
+#Transformed model
+sqrt_mfit_final = lm(sqrt_retweetCount ~ mexico + kentucky + fake + party, data = output_norts1)
+summary(sqrt_mfit_final)
+
+#Transformed model residuals
+sqrt_yhat = sqrt_mfit_final$fitted.values
+sqrt_OLS_Residuals = sqrt_mfit_final$residuals
+
+plot(sqrt_yhat, sqrt_OLS_Residuals, ylab='Transformed OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+abline(h=0)
+
+#Transformed normality plot
+e1071::probplot(sqrt_OLS_Residuals, xlab='Transformed OLS Residuals', ylab='Percent')
+
+#comparison plot
+par(mfrow = c(2,2))
+
+plot(full_yhat, full_OLS_Residuals, ylab='OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+abline(h=0)
+
+plot(sqrt_yhat, sqrt_OLS_Residuals, ylab='Transformed OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+abline(h=0)
+
+e1071::probplot(final_OLS_Residuals, xlab='OLS Residuals', ylab='Percent')
+
+e1071::probplot(sqrt_OLS_Residuals, xlab='Sqrt OLS Residuals', ylab='Percent')
+
+#Poisson
+pmodel = glm(formula = out_wout$rts~., data = out_wout, family = 'poisson')
+summary(pmodel)
+anova(pmodel)
+
+res = pmodel$residuals
+
+mean(res)
+sd(res)
+
+hist(res, main = "Histogram of Residuals", col = 'black', xlab = "Residuals")
+abline(v = mean(res), col = 'red', lwd = 4)
+abline(v = mean(res)+sd(res), col = 'blue', lwd = 2)
+abline(v = mean(res)-sd(res), col = 'blue', lwd = 2)
+legend(x = 0.5, y = 20, col = c('red', 'blue'),
+       lwd = c(4,2), legend = c('Mean', 'Standard Error'))
+
+plot(pmodel$fitted.values, pmodel$residuals)
+abline(h = 0)
+
+pmodel2 = glm(out_wout$rts~., data = out_wout, family = quasipoisson(link='log'))
+summary(pmodel2)
+
+plot(pmodel2$fitted.values, pmodel$residuals)
+abline(h = 0)
+
+pmodel3 = glm.nb(out_wout$rts~., data = out_wout)
+summary(pmodel3)
+
+anova(pmodel3)
+step(pmodel3)
+
+vif(pmodel3)
+
+final_model = glm.nb(out_wout$rts ~ out_wout$mexico +
+                                    out_wout$kentucky +
+                                    out_wout$fake +
+                                    out_wout$party)
+anova(final_model)
+summary(final_model)
+step(final_model)
+
+outliers = c(74, 24) # 67, 7 15
+
+rd_df = out_wout[-outliers,]
+
+rd_mod = glm.nb(rd_df$rts ~ rd_df$mexico +
+                            rd_df$kentucky +
+                            rd_df$fake +
+                            rd_df$party)
+plot(rd_mod)
+
+
+wout_rts[74, ]
+wout_rts[24, ]
+
+
+# #POISSON MODEL
+# pmodel = glm(rts~., data = out_wout , family = 'poisson')
+# summary(pmodel)
+# 
+# pmodel2 = glm(rts~., data = out_wout , family = quasipoisson(link='log'))
+# summary(pmodel2)
+# 
+# pyhat = pmodel$fitted.values
+# pOLS_Residuals = pmodel$residuals
+# 
+# pyhat2 = pmodel2$fitted.values
+# pOLS_Residuals2 = pmodel2$residuals
+# 
+# #POISSON RESIDUALS
+# plot(pyhat, pOLS_Residuals, ylab='Poisson OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+# abline(h=0)
+# 
+# plot(pyhat2, pOLS_Residuals2, ylab='Poisson OLS Residuals', xlab='Fitted Values', main='OLS Residuals', pch=16)
+# abline(h=0)
+
+```
+
+
